@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import { PDFDocument } from 'pdf-lib';
 import styles from './page.module.css';
 
 export default function Home() {
@@ -8,10 +9,12 @@ export default function Home() {
   const [isCompressing, setIsCompressing] = useState(false);
   const [compressionStats, setCompressionStats] = useState<{
     originalSize: number;
-    compressedSize: number;
+    clientCompressedSize: number;
+    finalCompressedSize: number;
     ratio: number;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [compressionStage, setCompressionStage] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const formatFileSize = (bytes: number) => {
@@ -36,15 +39,54 @@ export default function Home() {
     }
   };
 
+  const compressClientSide = async (file: File): Promise<Blob> => {
+    setCompressionStage('Client-side compression...');
+    
+    const arrayBuffer = await file.arrayBuffer();
+    const pdfDoc = await PDFDocument.load(arrayBuffer, {
+      ignoreEncryption: true,
+    });
+
+    // Remove metadata
+    pdfDoc.setTitle('');
+    pdfDoc.setAuthor('');
+    pdfDoc.setSubject('');
+    pdfDoc.setKeywords([]);
+    pdfDoc.setProducer('');
+    pdfDoc.setCreator('');
+
+    // Save with compression
+    const compressedBytes = await pdfDoc.save({
+      useObjectStreams: true,
+      addDefaultPage: false,
+    });
+
+    return new Blob([new Uint8Array(compressedBytes)], { type: 'application/pdf' });
+  };
+
   const handleCompress = async () => {
     if (!file) return;
 
     setIsCompressing(true);
     setError(null);
+    const originalSize = file.size;
 
     try {
+      // Step 1: Client-side compression
+      const clientCompressed = await compressClientSide(file);
+      const clientCompressedSize = clientCompressed.size;
+      
+      // Check if client-compressed file is under 4MB for Vercel free tier
+      if (clientCompressedSize > 4 * 1024 * 1024) {
+        setError(`File is too large (${formatFileSize(clientCompressedSize)} after compression). Please use a smaller PDF or upgrade to Vercel Pro.`);
+        setIsCompressing(false);
+        return;
+      }
+
+      // Step 2: Server-side optimization
+      setCompressionStage('Server-side optimization...');
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', clientCompressed, 'compressed.pdf');
 
       const response = await fetch('/api/compress', {
         method: 'POST',
@@ -56,14 +98,14 @@ export default function Home() {
         throw new Error(errorData.error || 'Compression failed');
       }
 
-      const originalSize = parseInt(response.headers.get('X-Original-Size') || '0');
-      const compressedSize = parseInt(response.headers.get('X-Compressed-Size') || '0');
-      const ratio = parseFloat(response.headers.get('X-Compression-Ratio') || '0');
+      const finalCompressedSize = parseInt(response.headers.get('X-Compressed-Size') || '0');
+      const totalRatio = ((1 - finalCompressedSize / originalSize) * 100).toFixed(2);
 
       setCompressionStats({
         originalSize,
-        compressedSize,
-        ratio,
+        clientCompressedSize,
+        finalCompressedSize,
+        ratio: parseFloat(totalRatio),
       });
 
       const blob = await response.blob();
@@ -79,6 +121,7 @@ export default function Home() {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setIsCompressing(false);
+      setCompressionStage('');
     }
   };
 
@@ -86,6 +129,7 @@ export default function Home() {
     setFile(null);
     setCompressionStats(null);
     setError(null);
+    setCompressionStage('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -129,6 +173,13 @@ export default function Home() {
           </div>
         )}
 
+        {isCompressing && compressionStage && (
+          <div className={styles.progress}>
+            <div className={styles.spinner}></div>
+            <p>{compressionStage}</p>
+          </div>
+        )}
+
         {compressionStats && (
           <div className={styles.stats}>
             <h3>Compression Results</h3>
@@ -137,11 +188,15 @@ export default function Home() {
               <span>{formatFileSize(compressionStats.originalSize)}</span>
             </div>
             <div className={styles.statRow}>
-              <span>Compressed Size:</span>
-              <span>{formatFileSize(compressionStats.compressedSize)}</span>
+              <span>Client Compressed:</span>
+              <span>{formatFileSize(compressionStats.clientCompressedSize)}</span>
             </div>
             <div className={styles.statRow}>
-              <span>Compression:</span>
+              <span>Final Size:</span>
+              <span>{formatFileSize(compressionStats.finalCompressedSize)}</span>
+            </div>
+            <div className={styles.statRow}>
+              <span>Total Compression:</span>
               <span className={styles.ratio}>{compressionStats.ratio}%</span>
             </div>
           </div>

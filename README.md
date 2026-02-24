@@ -4,12 +4,13 @@ A modern, easy-to-use PDF compression tool built with Next.js and deployable on 
 
 ## Features
 
-- 📄 Upload and compress PDF files
-- 🚀 Fast compression using pdf-lib
-- 📊 Shows compression statistics
+- 📄 Upload and compress PDF files (up to 50MB with hybrid compression)
+- 🚀 **Hybrid compression**: Client-side + Server-side optimization
+- 📊 Shows detailed compression statistics
 - 💾 Automatic download of compressed files
 - 🎨 Beautiful, responsive UI
-- ☁️ Deployable on Vercel
+- ☁️ Optimized for Vercel Free Tier (works with 4.5MB limit)
+- 🔒 Secure - files never stored permanently
 
 ## Getting Started
 
@@ -67,10 +68,18 @@ That's it! Your PDF compressor will be live in a few minutes.
 ## How to Use
 
 1. Visit your deployed application
-2. Click on the upload area or drag and drop a PDF file
+2. Click on the upload area or drag and drop a PDF file (any size)
 3. Click "Compress PDF"
+   - **Step 1**: Client-side compression reduces the file size in your browser
+   - **Step 2**: Server-side optimization further compresses the PDF
 4. The compressed file will automatically download
-5. View the compression statistics
+5. View detailed compression statistics showing both stages
+
+### How Hybrid Compression Works
+
+1. **Client-Side** (Browser): Initial compression using pdf-lib, removing metadata and optimizing structure
+2. **Server-Side** (Vercel): Additional optimization passes for maximum compression
+3. This two-stage approach allows you to compress large PDFs even on Vercel's free tier!
 
 ## Tech Stack
 
